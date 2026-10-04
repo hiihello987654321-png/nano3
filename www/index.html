@@ -133,6 +133,6 @@ async function blk(id){const u=users.find(x=>x.id===id);await put('users',id,{..
 async function rmu(id){if(!confirm('Remove this user and their access?'))return;await del('users',id);await load();adminView()}
 function csv(){const r=[['name','email','joined','plan','expires','status'],...users.map(u=>[u.name,u.email,fd(u.created),u.plan,fd(u.expires),u.status]),[],['payment_date','email','plan','amount'],...pays.map(p=>[fd(p.at),p.email,p.plan,p.amount])];
   const t=r.map(x=>x.map(c=>'"'+String(c??'').replace(/"/g,'""')+'"').join(',')).join('\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='nano-data.csv';a.click()
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='nano-data.csv';a.click()}
 init();
 </script></body></html>
