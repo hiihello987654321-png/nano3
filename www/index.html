@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Nano</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fff;--bg2:#f2f2f6;--tx:#14141a;--mu:#6b6b78;--ac:#e50914;--bd:#ddd}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d0d12;--bg2:#1a1a22;--tx:#f3f3f6;--mu:#9a9aa8;--bd:#2c2c38}}
+:root[data-theme=dark]{--bg:#0d0d12;--bg2:#1a1a22;--tx:#f3f3f6;--mu:#9a9aa8;--bd:#2c2c38}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--bd);position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5;flex-wrap:wrap}
+.logo{font-weight:800;color:var(--ac);font-size:20px;letter-spacing:.5px}
+input,select,button,textarea{font:inherit;color:var(--tx);background:var(--bg2);border:1px solid var(--bd);border-radius:8px;padding:9px 11px}
+button{cursor:pointer}button.p{background:var(--ac);color:#fff;border:0}button.d{color:var(--ac)}
+.sp{flex:1}main{padding:16px;max-width:1100px;margin:auto}
+.box{max-width:340px;margin:60px auto;display:grid;gap:10px}.box h2{margin:0 0 4px}
+.mu{color:var(--mu);font-size:13px}.err{color:var(--ac);font-size:13px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}.tabs button.on{background:var(--tx);color:var(--bg)}
+h3{margin:22px 0 8px}.row{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
+.card{flex:0 0 150px;cursor:pointer}.card .im{aspect-ratio:2/3;border-radius:10px;background:linear-gradient(135deg,#7b1fa2,#e50914);display:grid;place-items:center;font-size:42px;font-weight:800;color:#fff;background-size:cover;background-position:center}
+.card b{display:block;margin-top:5px;font-size:13px}
+.modal{position:fixed;inset:0;background:#000d;display:grid;place-items:center;z-index:9;padding:14px}
+.mb{background:var(--bg);border-radius:12px;max-width:760px;width:100%;padding:14px;max-height:94%;overflow:auto}
+video{width:100%;border-radius:8px;background:#000;max-height:60vh}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:560px}td,th{padding:8px;border-bottom:1px solid var(--bd);text-align:left;font-size:13px}
+.g{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:12px}
+.plans{display:flex;gap:12px;flex-wrap:wrap}.plan{flex:1;min-width:200px;border:1px solid var(--bd);border-radius:12px;padding:16px}
+.st{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}.st div{background:var(--bg2);padding:12px 16px;border-radius:10px}.st b{font-size:20px;display:block}
+</style></head><body>
+<div id="app"></div>
+<script>
+const $=s=>document.querySelector(s),app=$('#app');
+let DB=null,AS=null,movies=[],users=[],pays=[],me=null,tab='home',q='',ptab='movies',msg='';
+const SEC=['Movie','Show','Web Series'];
+const ls=c=>{try{return JSON.parse(localStorage.getItem('ott_'+c)||'{}')}catch(e){return{}}};
+const lw=(c,o)=>{try{localStorage.setItem('ott_'+c,JSON.stringify(o))}catch(e){}};
+async function list(c){if(DB){try{return(await DB.collection(c).get()).docs.map(d=>({id:d.id,...d.data()}))}catch(e){return[]}}return Object.entries(ls(c)).map(([id,v])=>({id,...v}))}
+async function put(c,id,v){v={...v};delete v.id;if(DB)await DB.collection(c).doc(id).set(v);else{const o=ls(c);o[id]=v;lw(c,o)}}
+async function del(c,id){if(DB)await DB.collection(c).doc(id).delete();else{const o=ls(c);delete o[id];lw(c,o)}}
+async function one(c,id){const r=(await list(c)).find(x=>x.id===id);return r}
+const hash=async s=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('ott:'+s)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+const uid=()=>Math.random().toString(36).slice(2,10);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fd=t=>t?new Date(t).toLocaleDateString():'-';
+const active=u=>u&&u.status!=='blocked'&&u.expires>Date.now();
+async function load(){[movies,users,pays]=await Promise.all([list('movies'),list('users'),list('payments')])}
+async function init(){
+  AS=true;
+  await load();
+  const s=sessionStorage.getItem('ott_me');if(s)me=users.find(u=>u.id===s)||null;
+  if(sessionStorage.getItem('ott_adm'))me={admin:true};
+  render();
+}
+addEventListener('hashchange',()=>{me=null;sessionStorage.clear();msg='';render()});
+const isAdm=()=>location.hash==='#admin';
+
+function render(){isAdm()?(me&&me.admin?adminView():adminLogin()):(me&&me.id?userView():userLogin())}
+
+/* ---------- CUSTOMER ---------- */
+function userLogin(sign){
+  app.innerHTML=`<div class="box"><div class="logo">NANO</div><h2>${sign?'Create account':'Sign in'}</h2>
+  ${sign?'<input id=n placeholder="Full name">':''}<input id=e placeholder="Email" type=email><input id=p placeholder="Password" type=password>
+  <div class=err>${esc(msg)}</div><button class=p id=go>${sign?'Sign up':'Sign in'}</button>
+  <a href="#" id=sw class=mu>${sign?'Have an account? Sign in':'New here? Create account'}</a><a href="#admin" class=mu onclick="setTimeout(()=>location.reload(),50)">Admin login</a></div>`;
+  $('#sw').onclick=e=>{e.preventDefault();msg='';userLogin(!sign)};
+  $('#go').onclick=async()=>{await load();const e=$('#e').value.trim().toLowerCase(),p=$('#p').value;if(!e||p.length<4){msg='Enter email and a 4+ char password';return userLogin(sign)}
+    const h=await hash(p),u=users.find(x=>x.email===e);
+    if(sign){if(u){msg='Email already registered';return userLogin(sign)}
+      const nu={id:uid(),name:$('#n').value.trim()||e,email:e,hash:h,status:'active',plan:'',expires:0,created:Date.now()};await put('users',nu.id,nu);me=nu}
+    else{if(!u||u.hash!==h){msg='Wrong email or password';return userLogin(sign)}me=u}
+    sessionStorage.setItem('ott_me',me.id);msg='';await load();me=users.find(x=>x.id===me.id);render()}}
+
+function userView(){
+  const ok=active(me),list_=movies.filter(m=>!q||(m.title+' '+m.category+' '+m.desc).toLowerCase().includes(q.toLowerCase()));
+  const secs=tab==='home'?SEC:[tab];
+  const card=m=>`<div class=card onclick="play('${m.id}')"><div class=im style="${m.poster?`background-image:url(${m.poster})`:''}">${m.poster?'':esc(m.title[0]||'?')}</div><b>${esc(m.title)}</b><span class=mu>${esc(m.category)}</span></div>`;
+  let body='';
+  if(me.status==='blocked')body='<p class=err>Your access has been suspended. Contact support.</p>';
+  else{
+    if(!ok)body+=`<div class=plans>${[['Monthly',149,30],['Yearly',999,365]].map(([n,pr,d])=>`<div class=plan><h3 style="margin-top:0">${n}</h3><b style="font-size:24px">₹${pr}</b><p class=mu>${d} days unlimited streaming</p><button class=p onclick="pay('${n}',${pr},${d})">Pay ₹${pr} (demo UPI)</button></div>`).join('')}</div><p class=mu>Subscribe to start watching. Browsing is free.</p>`;
+    if(q){body+=`<h3>Results for "${esc(q)}"</h3><div class=row style="flex-wrap:wrap">${list_.map(card).join('')||'<p class=mu>No matches</p>'}</div>`}
+    else secs.forEach(s=>{const items=list_.filter(m=>m.section===s);const cats=[...new Set(items.map(m=>m.category))];
+      body+=`<h3>${s==='Show'?'TV Shows':s==='Movie'?'Movies':'Web Series'}</h3>`+(items.length?cats.map(c=>`<div class=mu>${esc(c)}</div><div class=row>${items.filter(m=>m.category===c).map(card).join('')}</div>`).join(''):'<p class=mu>Nothing here yet</p>')})}
+  app.innerHTML=`<header><span class=logo>NANO</span><input id=s placeholder="Search movies, shows..." value="${esc(q)}" style="flex:1;min-width:140px"><span class=mu>${esc(me.name)}${ok?' · until '+fd(me.expires):''}</span><button id=lo>Logout</button></header>
+  <main><div class=tabs>${[['home','Home'],['Movie','Movies'],['Show','TV Shows'],['Web Series','Web Series']].map(([k,l])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';render()">${l}</button>`).join('')}</div>${body}</main>`;
+  const s=$('#s');s.oninput=()=>{q=s.value;const p=s.selectionStart;userView();$('#s').focus();$('#s').setSelectionRange(p,p)};
+  $('#lo').onclick=()=>{me=null;sessionStorage.clear();render()};
+}
+async function pay(plan,amt,days){
+  if(!confirm(`Demo payment of ₹${amt} for the ${plan} plan. Continue?`))return;
+  await put('payments',uid(),{userId:me.id,name:me.name,email:me.email,plan,amount:amt,at:Date.now(),status:'paid'});
+  me={...me,plan,expires:Math.max(Date.now(),me.expires||0)+days*864e5};await put('users',me.id,me);await load();render()}
+async function play(id){
+  await load();me=users.find(u=>u.id===me.id)||me;
+  const m=movies.find(x=>x.id===id);if(!m)return;
+  if(me.status==='blocked')return alert('Access suspended');
+  if(!active(me))return alert('Please subscribe to watch.');
+  const d=document.createElement('div');d.className='modal';
+  d.innerHTML=`<div class=mb><video controls autoplay src="${esc(m.video)}"></video><h3 style="margin:10px 0 2px">${esc(m.title)}</h3><div class=mu>${esc(m.section)} · ${esc(m.category)}</div><p>${esc(m.desc)}</p><button>Close</button></div>`;
+  d.onclick=e=>{if(e.target===d||e.target.tagName==='BUTTON')d.remove()};document.body.appendChild(d)}
+
+/* ---------- ADMIN ---------- */
+async function adminLogin(){
+  const cfg=await one('config','admin');
+  app.innerHTML=`<div class="box"><div class="logo">NANO ADMIN</div><h2>${cfg?'Admin sign in':'Set up admin account'}</h2>
+  <input id=a placeholder="Admin ID"><input id=p type=password placeholder="Password"><div class=err>${esc(msg)}</div>
+  <button class=p id=go>${cfg?'Sign in':'Create admin'}</button><a href="#" class=mu>Back to viewer app</a>
+  ${cfg?'':'<span class=mu>First run: choose the admin ID and password. Only these will work afterwards.</span>'}</div>`;
+  $('#go').onclick=async()=>{const a=$('#a').value.trim(),h=await hash($('#p').value);if(!a||$('#p').value.length<6){msg='ID required, password 6+ chars';return adminLogin()}
+    if(!cfg)await put('config','admin',{id:a,hash:h});else if(cfg.id!==a||cfg.hash!==h){msg='Invalid ID or password';return adminLogin()}
+    sessionStorage.setItem('ott_adm','1');me={admin:true};msg='';await load();render()}}
+
+function adminView(){
+  const rev=pays.reduce((s,p)=>s+p.amount,0),act=users.filter(active).length;
+  let b='';
+  if(ptab==='movies')b=`<div class=g><input id=t placeholder="Title"><select id=sec>${SEC.map(s=>`<option>${s}</option>`).join('')}</select><input id=cat placeholder="Category (Action, Comedy...)"></div>
+  <textarea id=ds placeholder="Description" style="width:100%;margin-bottom:8px"></textarea>
+  <div class=g><input id=vu placeholder="Video URL (https://...mp4)"><input id=pu placeholder="Poster image URL (optional)"></div><button class=p id=up>Publish title</button> <span class=mu id=us></span>
+  <h3>Library (${movies.length})</h3><div class=wrap><table><tr><th>Title<th>Section<th>Category<th>Added<th></tr>${movies.map(m=>`<tr><td>${esc(m.title)}<td>${m.section}<td>${esc(m.category)}<td>${fd(m.at)}<td><button class=d onclick="rm('${m.id}')">Delete</button></tr>`).join('')}</table></div>`;
+  if(ptab==='users')b=`<div class=wrap><table><tr><th>Name<th>Email<th>Joined<th>Plan<th>Expires<th>Status<th>Access</tr>${users.map(u=>`<tr><td>${esc(u.name)}<td>${esc(u.email)}<td>${fd(u.created)}<td>${esc(u.plan||'-')}<td>${fd(u.expires)}<td>${u.status}<td><button onclick="blk('${u.id}')">${u.status==='blocked'?'Unblock':'Block'}</button> <button class=d onclick="rmu('${u.id}')">Remove</button></tr>`).join('')||'<tr><td colspan=7>No users yet'}</table></div>`;
+  if(ptab==='pay')b=`<div class=wrap><table><tr><th>Date<th>User<th>Email<th>Plan<th>Amount<th>Status</tr>${[...pays].sort((a,c)=>c.at-a.at).map(p=>`<tr><td>${fd(p.at)}<td>${esc(p.name)}<td>${esc(p.email)}<td>${p.plan}<td>₹${p.amount}<td>${p.status}</tr>`).join('')||'<tr><td colspan=6>No payments yet'}</table></div><p><button onclick="csv()">Download user + payment data (CSV)</button></p>`;
+  app.innerHTML=`<header><span class=logo>NANO ADMIN</span><span class=sp></span><button id=lo>Logout</button></header><main>
+  <div class=st><div><b>${movies.length}</b>Titles</div><div><b>${users.length}</b>Users</div><div><b>${act}</b>Active subs</div><div><b>₹${rev}</b>Revenue</div></div>
+  <div class=tabs>${[['movies','Content'],['users','Users & access'],['pay','Payments']].map(([k,l])=>`<button class="${ptab===k?'on':''}" onclick="ptab='${k}';adminView()">${l}</button>`).join('')}</div>${b}</main>`;
+  $('#lo').onclick=()=>{me=null;sessionStorage.clear();render()};
+  const up=$('#up');if(up)up.onclick=async()=>{
+    const t=$('#t').value.trim(),v=$('#vu').value.trim(),p=$('#pu').value.trim();if(!t||!v){$('#us').textContent='Title and video URL are required';return}
+    try{$('#us').textContent='Uploading…';const vr={url:v},pr=p?{url:p}:null;
+      await put('movies',uid(),{title:t,section:$('#sec').value,category:$('#cat').value.trim()||'General',desc:$('#ds').value,video:vr.url,poster:pr?pr.url:'',at:Date.now()});
+      await load();adminView()}catch(e){$('#us').textContent='Upload failed: '+(e.message||e.code||e)}}
+}
+async function rm(id){if(!confirm('Delete this title?'))return;await del('movies',id);await load();adminView()}
+async function blk(id){const u=users.find(x=>x.id===id);await put('users',id,{...u,status:u.status==='blocked'?'active':'blocked'});await load();adminView()}
+async function rmu(id){if(!confirm('Remove this user and their access?'))return;await del('users',id);await load();adminView()}
+function csv(){const r=[['name','email','joined','plan','expires','status'],...users.map(u=>[u.name,u.email,fd(u.created),u.plan,fd(u.expires),u.status]),[],['payment_date','email','plan','amount'],...pays.map(p=>[fd(p.at),p.email,p.plan,p.amount])];
+  const t=r.map(x=>x.map(c=>'"'+String(c??'').replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='nano-data.csv';a.click()
+init();
+</script></body></html>
